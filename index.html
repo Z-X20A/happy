@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>生日快乐 (紫色梦幻版)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <!-- MediaPipe Global Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@300;400&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Lato', sans-serif;
+            color: #e2e8f0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .ui-element {
+            pointer-events: auto;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            text-shadow: 0 0 20px rgba(147, 112, 219, 0.9); /* 紫色光晕 */
+            color: #ffffff;
+        }
+
+        .glass-panel {
+            background: rgba(20, 10, 30, 0.65); /* 深紫底色 */
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(230, 230, 250, 0.15);
+            box-shadow: 0 8px 32px rgba(75, 0, 130, 0.4);
+        }
+        
+        .instruction-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- Hidden Video for MediaPipe -->
+    <video id="input-video" style="display:none;" playsinline></video>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="flex flex-col justify-between p-6">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-start">
+            <div class="glass-panel p-6 rounded-xl max-w-md transition-all duration-700 transform translate-y-0 opacity-100" id="intro-panel">
+                <h1 class="text-3xl text-white mb-2 font-bold tracking-widest">HAPPY BIRTHDAY</h1>
+                <p class="text-purple-200 text-xs mb-6 leading-relaxed border-l-2 border-purple-500 pl-3">
+                    请开启摄像头，点亮紫色梦幻许愿树
+                </p>
+                
+                <div class="space-y-4">
+                    <div class="flex items-center gap-4">
+                        <div class="instruction-icon bg-purple-800/50 text-white border-purple-400/30">
+                            ✊
+                        </div>
+                        <div>
+                            <p class="text-white text-sm font-bold uppercase tracking-wide">握拳 (Fist)</p>
+                            <p class="text-purple-300 text-xs">聚合许愿树</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="instruction-icon bg-indigo-900/40 text-indigo-200 border-indigo-500/30">
+                            🖐
+                        </div>
+                        <div>
+                            <p class="text-indigo-100 text-sm font-bold uppercase tracking-wide">张开手 (Open)</p>
+                            <p class="text-purple-300 text-xs">漫天星光 (炸开)</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="instruction-icon bg-white/10 text-white border-white/20">
+                            👌
+                        </div>
+                        <div>
+                            <p class="text-white text-sm font-bold uppercase tracking-wide">捏合 (Pinch)</p>
+                            <p class="text-purple-300 text-xs">拆礼物 (抓取)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="start-btn" class="ui-element mt-8 w-full py-3 bg-gradient-to-r from-purple-900 to-indigo-900 hover:from-purple-800 hover:to-indigo-800 text-white font-serif tracking-widest text-sm uppercase rounded shadow-lg shadow-purple-600/30 transition-all border border-purple-400/30">
+                    开启派对
+                </button>
+                <p id="loading-text" class="hidden text-xs text-center mt-3 text-purple-300 animate-pulse tracking-wide">正在布置派对现场...</p>
+            </div>
+
+            <!-- Upload Control -->
+            <div class="glass-panel p-4 rounded-full ui-element hover:bg-white/10 transition-all cursor-pointer group active:scale-95" onclick="document.getElementById('photo-upload').click()">
+                <div class="flex flex-col items-center justify-center w-12 h-12">
+                    <span class="text-2xl text-gray-400 group-hover:text-white transition-colors">🎂</span>
+                </div>
+                <!-- 允许选择多个图片，支持 jpg, png, webp, mp4 -->
+                <input type="file" id="photo-upload" multiple accept="image/*, video/mp4, video/webm, video/ogg" class="hidden">
+            </div>
+        </div>
+
+        <!-- Feedback HUD -->
+        <div class="flex flex-col items-center mb-8 gap-2">
+            <div id="gesture-feedback" class="glass-panel px-10 py-3 rounded-full text-purple-100 font-serif tracking-widest text-sm opacity-0 transition-opacity duration-300 border border-purple-500/30">
+                MAKE A WISH
+            </div>
+            <p class="text-xs text-gray-500 font-mono opacity-50 uppercase">Use Index Finger to Aim</p>
+        </div>
+    </div>
+
+    <!-- Main Logic -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Configuration ---
+        const CONFIG = {
+            particleCount: 1600,
+            colors: {
+                purpleCube: 0x4B0082, // Indigo/Dark Purple for Cubes
+                crystal: 0xFFFFFF,    // Pure White Balls
+                red: 0xB22222,
+                white: 0xFFFFFF,
+                flame: 0xFFA500,      // Candle Flame Color
+                purpleCandle: 0x9370DB // Lavender Purple Candle
+            },
+            treeHeight: 35,
+            treeRadius: 14,
+            camZ: 45
+        };
+
+        // --- State Management ---
+        const STATE = {
+            mode: 'TREE', 
+            handDetected: false,
+            handPosition: { x: 0, y: 0 },   // Palm for Rotation
+            cursorPosition: { x: 0, y: 0 }, // Index for Cursor
+            rotation: 0,
+            targetRotation: 0,
+            photos: [],
+            lastGesture: 'OPEN',
+            gestureFrameCount: 0,
+            isPinching: false 
+        };
+
+        // --- Global Variables ---
+        let camera, scene, renderer, composer, bloomPass;
+        let particles = []; 
+        let photoMeshes = [];
+        let cursorMesh;
+        let clock = new THREE.Clock();
+        let raycaster = new THREE.Raycaster();
+        let focusedPhoto = null;
+        let hoveredPhoto = null;
+        let photoGroups = [];
+        let loader = new THREE.TextureLoader();
+        let maxAnisotropy = 1;
+        
+        // --- Initialization ---
+        const init = () => {
+            const container = document.getElementById('canvas-container');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050505, 0.015);
+            scene.background = new THREE.Color(0x050505);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, CONFIG.camZ);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: false, 
+                powerPreference: "high-performance",
+                logarithmicDepthBuffer: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 0.8; 
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            
+            maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+            container.appendChild(renderer.domElement);
+
+            // Post Processing
+            const renderScene = new RenderPass(scene, camera);
+            
+            // Bloom - Purple Haze
+            bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            bloomPass.threshold = 0.85; 
+            bloomPass.strength = 1.6; 
+            bloomPass.radius = 0.7;
+
+            composer = new EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+            scene.add(ambientLight);
+            
+            // Main Light - Cool White
+            const spotLight = new THREE.SpotLight(0xffffff, 2000);
+            spotLight.position.set(20, 50, 20);
+            spotLight.decay = 2;
+            spotLight.distance = 200;
+            scene.add(spotLight);
+            
+            // Rim Light - Strong Purple
+            const rimLight = new THREE.SpotLight(0x8A2BE2, 1200);
+            rimLight.position.set(-20, 20, -20);
+            scene.add(rimLight);
+
+            // Objects
+            createParticles();
+            createDefaultPhotos();
+            createCursor();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            renderer.setAnimationLoop(animate);
+        };
+
+        const createCursor = () => {
+            const geometry = new THREE.RingGeometry(0.8, 1, 32);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: 0xE6E6FA, 
+                transparent: true, 
+                opacity: 0.8, 
+                side: THREE.DoubleSide,
+                depthTest: false 
+            });
+            cursorMesh = new THREE.Mesh(geometry, material);
+            cursorMesh.renderOrder = 999;
+            cursorMesh.visible = false;
+            scene.add(cursorMesh);
+        };
+
+        // --- Particle System (Purple Dream) ---
+        const createParticles = () => {
+            
+            // 1. Purple Cubes (Main Body) - Dark Purple Crystal
+            const matPurpleCube = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.purpleCube, 
+                metalness: 0.8, 
+                roughness: 0.2, 
+                emissive: 0x4B0082, // Indigo Glow
+                emissiveIntensity: 0.8 
+            });
+
+            // 2. White Crystal Spheres (Balls) - Bright accents
+            const matWhiteBall = new THREE.MeshStandardMaterial({ 
+                color: 0xFFFFFF, 
+                metalness: 0.9, 
+                roughness: 0.1, 
+                emissive: 0xFFFFFF,
+                emissiveIntensity: 1.5 // Bright glow
+            });
+            
+            // 3. Purple Candle Body
+            const matCandle = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.purpleCandle, 
+                roughness: 0.3, 
+                metalness: 0.1,
+                emissive: 0x483D8B,
+                emissiveIntensity: 0.3
+            });
+
+            // 4. Flame
+            const matFlame = new THREE.MeshStandardMaterial({ 
+                color: 0xFFA500, 
+                emissive: 0xFF4500, 
+                emissiveIntensity: 8.0 
+            });
+
+            const geomSphere = new THREE.SphereGeometry(0.35, 12, 12);
+            const geomCube = new THREE.BoxGeometry(0.55, 0.55, 0.55);
+            const geomCandle = new THREE.CylinderGeometry(0.12, 0.12, 1.2, 8); 
+            const geomFlame = new THREE.ConeGeometry(0.08, 0.3, 8); 
+            
+            // Create Meshes - ADJUSTED COUNTS
+            const meshPurple = new THREE.InstancedMesh(geomCube, matPurpleCube, 600); // Reduced Cubes (was 1000)
+            const meshWhite = new THREE.InstancedMesh(geomSphere, matWhiteBall, 800); // Increased Balls (was 400)
+            const meshCandle = new THREE.InstancedMesh(geomCandle, matCandle, 200); 
+            const meshFlame = new THREE.InstancedMesh(geomFlame, matFlame, 200);
+
+            scene.add(meshPurple);
+            scene.add(meshWhite);
+            scene.add(meshCandle);
+            scene.add(meshFlame);
+
+            const distribute = (mesh, type, offsetIndex) => {
+                const count = mesh.count;
+                const dummy = new THREE.Object3D();
+
+                for (let i = 0; i < count; i++) {
+                    const t = i / count;
+                    const y = -12 + t * CONFIG.treeHeight;
+                    const radius = (1 - t) * CONFIG.treeRadius;
+                    const angle = i * 2.399 + offsetIndex;
+                    
+                    const tx = Math.cos(angle) * radius + (Math.random()-0.5);
+                    const tz = Math.sin(angle) * radius + (Math.random()-0.5);
+                    const cx = (Math.random() - 0.5) * 60;
+                    const cy = (Math.random() - 0.5) * 40;
+                    const cz = (Math.random() - 0.5) * 30;
+
+                    dummy.position.set(tx, y, tz);
+                    
+                    if (type === 'candle' || type === 'flame') {
+                        dummy.rotation.set(0, Math.random() * Math.PI, 0); 
+                        dummy.scale.setScalar(1.0);
+                        if (type === 'flame') {
+                            dummy.position.y += 0.7; 
+                        }
+                    } else {
+                        dummy.scale.setScalar(Math.random() * 0.5 + 0.5);
+                        dummy.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+                    }
+
+                    dummy.updateMatrix();
+                    mesh.setMatrixAt(i, dummy.matrix);
+
+                    particles.push({
+                        mesh: mesh,
+                        index: i,
+                        treePos: new THREE.Vector3(tx, y, tz).add(type === 'flame' ? new THREE.Vector3(0, 0.7, 0) : new THREE.Vector3(0,0,0)),
+                        chaosPos: new THREE.Vector3(cx, cy, cz),
+                        currentPos: new THREE.Vector3(tx, y, tz),
+                        wobbleOffset: Math.random() * 100,
+                        wobbleSpeed: Math.random() * 0.5 + 0.5,
+                        baseScale: dummy.scale.clone(),
+                        baseRotation: dummy.rotation.clone(),
+                        isLight: (type === 'white'),
+                        isFlame: (type === 'flame')
+                    });
+                }
+            };
+
+            // Distribute them
+            distribute(meshPurple, 'purple', 0); // Main body is now purple cubes
+            distribute(meshWhite, 'white', 1);   // Ornaments are white balls
+            distribute(meshCandle, 'candle', 2);
+            distribute(meshFlame, 'flame', 2); 
+        };
+
+        // --- Photo/Video System ---
+        const createPhoto = (texture, index, videoElement = null) => {
+            const group = new THREE.Group();
+            
+            texture.anisotropy = maxAnisotropy;
+            texture.minFilter = THREE.LinearFilter; 
+            texture.magFilter = THREE.LinearFilter;
+            
+            let aspect = 0.8;
+            if (videoElement) {
+                if(videoElement.videoWidth) aspect = videoElement.videoWidth / videoElement.videoHeight;
+            } else if (texture.image && texture.image.width) {
+                aspect = texture.image.width / texture.image.height;
+            }
+            
+            const width = 5;
+            const height = width / aspect;
+
+            const pGeo = new THREE.PlaneGeometry(width, height);
+            const pMat = new THREE.MeshBasicMaterial({ 
+                map: texture, 
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -1,
+                polygonOffsetUnits: -1
+            });
+            const pMesh = new THREE.Mesh(pGeo, pMat);
+            
+            pMesh.position.z = 0.08; 
+            pMesh.name = "photo_surface"; 
+            
+            // Frame Plane - White Frame
+            const fWidth = width + 1; 
+            const fHeight = height + 2.5; 
+            const fGeo = new THREE.PlaneGeometry(fWidth, fHeight);
+            const fMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, side: THREE.DoubleSide }); 
+            const fMesh = new THREE.Mesh(fGeo, fMat);
+            
+            pMesh.position.y = (fHeight - height) / 2 - 0.5;
+
+            group.add(fMesh);
+            group.add(pMesh);
+
+            const cx = (Math.random() - 0.5) * 40;
+            const cy = (Math.random() - 0.5) * 30;
+            const cz = (Math.random() - 0.5) * 20;
+
+            group.userData = {
+                chaosPos: new THREE.Vector3(cx, cy, cz),
+                treePos: new THREE.Vector3(0, 15, 0),
+                velocity: new THREE.Vector3((Math.random()-0.5)*0.02, (Math.random()-0.5)*0.02, 0),
+                video: videoElement 
+            };
+            
+            group.scale.set(0,0,0);
+            
+            scene.add(group);
+            photoMeshes.push(group);
+            photoGroups.push(group);
+        };
+
+        const createDefaultPhotos = () => {
+            const defaultContent = [
+                { type: 'image', url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80' },
+                { type: 'image', url: 'https://images.unsplash.com/photo-1530103862676-de3c9a59af38?auto=format&fit=crop&w=600&q=80' },
+                { type: 'image', url: 'https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=600&q=80' },
+                { type: 'image', url: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=600&q=80' },
+                { type: 'image', url: 'https://images.unsplash.com/photo-1602631985686-1bb0e6a8696e?auto=format&fit=crop&w=600&q=80' }
+            ];
+
+            defaultContent.forEach((item, i) => {
+                if (item.type === 'video') {
+                    const video = document.createElement('video');
+                    video.src = item.url;
+                    video.loop = true;
+                    video.muted = true; 
+                    video.playsInline = true;
+                    video.crossOrigin = "anonymous";
+                    video.play().catch(e => console.log("Auto-play prevented"));
+
+                    video.onloadedmetadata = () => {
+                        const texture = new THREE.VideoTexture(video);
+                        texture.colorSpace = THREE.SRGBColorSpace;
+                        createPhoto(texture, i, video);
+                    };
+                    video.onerror = () => {
+                        createFallbackCard(i, "Video Error");
+                    }
+                } else {
+                    loader.load(item.url, (tex) => {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        createPhoto(tex, i);
+                    }, undefined, () => {
+                        createFallbackCard(i, "B-Day");
+                    });
+                }
+            });
+        };
+
+        const createFallbackCard = (index, text) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#9370DB'; // Purple
+            ctx.fillRect(0,0,512,512);
+            ctx.fillStyle = '#fff'; 
+            ctx.font = '60px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, 256, 256);
+            const t = new THREE.CanvasTexture(canvas);
+            t.colorSpace = THREE.SRGBColorSpace;
+            createPhoto(t, index);
+        };
+
+        // --- Logic Update ---
+        const updateState = (delta, time) => {
+            
+            // Dynamic Bloom Logic
+            const targetBloomStrength = (STATE.mode === 'FOCUS') ? 0.0 : 1.4;
+            bloomPass.strength += (targetBloomStrength - bloomPass.strength) * 4.0 * delta;
+
+            const dummy = new THREE.Object3D();
+            
+            // 1. Cursor & Camera Logic
+            hoveredPhoto = null; // Reset hover
+
+            if (STATE.mode === 'EXPLODE' || STATE.mode === 'FOCUS') {
+                if (STATE.handDetected) {
+                    // Cursor from Index Tip
+                    raycaster.setFromCamera(STATE.cursorPosition, camera);
+                    
+                    const cursorDist = 20;
+                    const cursorPos = new THREE.Vector3()
+                        .copy(raycaster.ray.direction)
+                        .multiplyScalar(cursorDist)
+                        .add(raycaster.ray.origin);
+                        
+                    cursorMesh.position.copy(cursorPos);
+                    cursorMesh.lookAt(camera.position);
+                    cursorMesh.visible = true;
+
+                    // Hover Detection
+                    const intersects = raycaster.intersectObjects(photoGroups, true); 
+                    if (intersects.length > 0) {
+                        let target = intersects[0].object;
+                        while(target.parent && !photoMeshes.includes(target)) {
+                            target = target.parent;
+                        }
+                        if (photoMeshes.includes(target)) {
+                            hoveredPhoto = target;
+                        }
+                    }
+
+                    if (STATE.isPinching) {
+                        cursorMesh.scale.set(0.5, 0.5, 0.5);
+                        cursorMesh.material.color.set(0x9370DB);
+                    } else {
+                        cursorMesh.scale.set(1, 1, 1);
+                        cursorMesh.material.color.set(0xE6E6FA);
+                    }
+
+                    // Rotation from Palm Center
+                    if (STATE.mode === 'EXPLODE') {
+                        // Wide rotation
+                        const targetRot = STATE.handPosition.x * 2.0; 
+                        STATE.rotation += (targetRot - STATE.rotation) * 2.0 * delta;
+                        
+                        // Adaptive Camera
+                        const camDist = getResponsiveCamZ();
+                        camera.position.x = Math.sin(STATE.rotation) * camDist;
+                        camera.position.z = Math.cos(STATE.rotation) * camDist;
+                        camera.lookAt(0, 0, 0);
+                    }
+                } else {
+                    cursorMesh.visible = false;
+                }
+            } else {
+                STATE.rotation += delta * 0.2;
+                const camDist = getResponsiveCamZ();
+                camera.position.x = Math.sin(STATE.rotation) * camDist;
+                camera.position.z = Math.cos(STATE.rotation) * camDist;
+                camera.lookAt(0, 5, 0);
+                cursorMesh.visible = false;
+            }
+
+            const lerpSpeed = 4.0 * delta;
+            particles.forEach(p => {
+                let target = (STATE.mode === 'TREE') ? p.treePos : p.chaosPos;
+                p.currentPos.lerp(target, lerpSpeed);
+                const wobble = Math.sin(time * p.wobbleSpeed + p.wobbleOffset) * 0.2;
+                dummy.position.copy(p.currentPos);
+                if (STATE.mode !== 'TREE') dummy.position.y += wobble;
+                const scaleTarget = (STATE.mode === 'TREE') ? 1.0 : 0.6;
+                dummy.scale.setScalar(scaleTarget);
+                
+                // FLAME ANIMATION
+                if (p.isFlame) {
+                    const flicker = Math.sin(time * 25 + p.index) * 0.2 + 1.0;
+                    dummy.scale.multiplyScalar(flicker);
+                    dummy.position.x += (Math.random()-0.5) * 0.02;
+                }
+
+                dummy.lookAt(camera.position); 
+                if (STATE.mode === 'TREE' && !p.isFlame) dummy.rotation.set(0,0,0);
+                
+                dummy.updateMatrix();
+                p.mesh.setMatrixAt(p.index, dummy.matrix);
+            });
+            scene.children.filter(c => c.isInstancedMesh).forEach(m => m.instanceMatrix.needsUpdate = true);
+
+            photoMeshes.forEach(group => {
+                if (STATE.mode === 'TREE') {
+                    group.scale.lerp(new THREE.Vector3(0,0,0), lerpSpeed);
+                    group.position.lerp(group.userData.treePos, lerpSpeed);
+                    if(group.userData.video) {
+                        group.userData.video.muted = true; 
+                        group.userData.video.play(); 
+                    }
+                } else {
+                    group.visible = true;
+                    if (STATE.mode === 'FOCUS' && group === focusedPhoto) {
+                        const frontPos = camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(12));
+                        group.position.lerp(frontPos, lerpSpeed * 3);
+                        group.lookAt(camera.position);
+                        group.scale.lerp(new THREE.Vector3(1.5, 1.5, 1.5), lerpSpeed);
+                    } else {
+                        let target = group.userData.chaosPos.clone();
+                        let scaleTarget = 1.0;
+                        if (STATE.mode === 'FOCUS') {
+                            scaleTarget = 0.5;
+                        } else if (group === hoveredPhoto) {
+                            scaleTarget = 1.15;
+                            const dir = camera.position.clone().sub(target).normalize();
+                            target = target.clone().add(dir.multiplyScalar(2));
+                        }
+
+                        group.scale.lerp(new THREE.Vector3(scaleTarget, scaleTarget, scaleTarget), lerpSpeed);
+                        target.y += Math.sin(time + group.id) * 0.5;
+                        group.position.lerp(target, lerpSpeed);
+                        group.lookAt(camera.position);
+                    }
+                }
+            });
+        };
+
+        const animate = () => {
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+            updateState(delta, time);
+            composer.render();
+        };
+
+        const getResponsiveCamZ = () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            if (aspect < 1.0) {
+                return CONFIG.camZ / aspect * 0.8;
+            }
+            return CONFIG.camZ;
+        };
+
+        const updateCameraPosition = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            camera.position.z = getResponsiveCamZ();
+        };
+
+        const onWindowResize = () => {
+            updateCameraPosition();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        };
+
+        const videoElement = document.getElementById('input-video');
+        const startBtn = document.getElementById('start-btn');
+        const feedbackEl = document.getElementById('gesture-feedback');
+        const loadingText = document.getElementById('loading-text');
+        
+        startBtn.addEventListener('click', async () => {
+            startBtn.disabled = true;
+            startBtn.classList.add('opacity-50');
+            loadingText.classList.remove('hidden');
+
+            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+            hands.onResults(onHandsResults);
+
+            const cameraUtils = new Camera(videoElement, {
+                onFrame: async () => await hands.send({image: videoElement}),
+                width: 640, height: 480
+            });
+            
+            // ERROR HANDLING & MOUSE FALLBACK
+            try {
+                await cameraUtils.start();
+                document.getElementById('intro-panel').classList.add('opacity-0');
+                setTimeout(()=> document.getElementById('intro-panel').style.display = 'none', 700);
+                feedbackEl.style.opacity = '1';
+            } catch (err) {
+                console.warn("Camera failed, falling back to mouse", err);
+                loadingText.textContent = "未检测到摄像头，已切换至鼠标模式 (按空格键切换形态)";
+                loadingText.classList.remove('text-blue-200');
+                loadingText.classList.add('text-red-400');
+                
+                setTimeout(() => {
+                    document.getElementById('intro-panel').classList.add('opacity-0');
+                    setTimeout(()=> document.getElementById('intro-panel').style.display = 'none', 700);
+                    feedbackEl.style.opacity = '1';
+                    enableMouseInteraction();
+                }, 1500);
+            }
+        });
+
+        const enableMouseInteraction = () => {
+            STATE.handDetected = true;
+            feedbackEl.innerText = "MOUSE MODE";
+
+            document.addEventListener('mousemove', (e) => {
+                const x = (e.clientX / window.innerWidth) * 2 - 1;
+                const y = -(e.clientY / window.innerHeight) * 2 + 1;
+                
+                STATE.handPosition.x = x * 1.5; 
+                STATE.cursorPosition.x = x * 1.3; 
+                STATE.cursorPosition.y = y * 1.3 + 0.2;
+            });
+
+            document.addEventListener('mousedown', () => {
+                STATE.isPinching = true;
+                executeState('PINCH');
+            });
+
+            document.addEventListener('mouseup', () => {
+                STATE.isPinching = false;
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') {
+                    if (STATE.mode === 'TREE') {
+                        executeState('OPEN');
+                    } else {
+                        executeState('FIST');
+                    }
+                }
+            });
+        };
+
+        const onHandsResults = (results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                STATE.handDetected = true;
+                const lm = results.multiHandLandmarks[0];
+                
+                let ndcX = (1 - lm[9].x) * 2 - 1; 
+                let ndcY = (1 - lm[9].y) * 2 - 1;
+                
+                ndcX *= 1.3;
+                ndcY *= 1.3;
+                ndcY += 0.2; 
+
+                ndcX = Math.max(-1, Math.min(1, ndcX));
+                ndcY = Math.max(-1, Math.min(1, ndcY));
+
+                STATE.handPosition.x = ndcX;
+                STATE.handPosition.y = ndcY;
+
+                let tipX = (1 - lm[8].x) * 2 - 1; 
+                let tipY = (1 - lm[8].y) * 2 - 1;
+                tipX *= 1.3; tipY *= 1.3; tipY += 0.2; 
+                STATE.cursorPosition.x = Math.max(-1, Math.min(1, tipX));
+                STATE.cursorPosition.y = Math.max(-1, Math.min(1, tipY));
+
+                processGesture(lm);
+            } else {
+                STATE.handDetected = false;
+                STATE.gestureFrameCount = 0;
+                STATE.isPinching = false;
+                updateFeedback("SEARCHING HAND...", "gray");
+            }
+        };
+
+        const processGesture = (lm) => {
+            const dist = (i, j) => Math.sqrt(
+                Math.pow(lm[i].x - lm[j].x, 2) + 
+                Math.pow(lm[i].y - lm[j].y, 2) + 
+                Math.pow(lm[i].z - lm[j].z, 2)
+            );
+
+            const scale = dist(0, 9);
+            if (scale < 0.02) return;
+
+            const dThumbIndex = dist(4, 8) / scale;
+            const dMiddle = dist(12, 0) / scale;
+            const dRing = dist(16, 0) / scale;
+            const dPinky = dist(20, 0) / scale;
+            const otherFingersExt = (dMiddle + dRing + dPinky) / 3;
+
+            let detected = STATE.lastGesture;
+
+            if (otherFingersExt < 0.85) {
+                detected = 'FIST';
+            } else {
+                const pinchThreshold = STATE.isPinching ? 0.50 : 0.26;
+                if (dThumbIndex < pinchThreshold) {
+                    detected = 'PINCH';
+                } else {
+                    detected = 'OPEN';
+                }
+            }
+
+            if (detected === STATE.lastGesture) {
+                STATE.gestureFrameCount++;
+            } else {
+                STATE.gestureFrameCount = 0;
+                STATE.lastGesture = detected;
+            }
+
+            if (STATE.gestureFrameCount > 3) {
+                executeState(detected);
+            }
+        };
+
+        const executeState = (gesture) => {
+            if (gesture === 'PINCH') {
+                STATE.isPinching = true;
+                if (STATE.mode !== 'TREE') {
+                    if (hoveredPhoto) {
+                        let target = hoveredPhoto;
+                        if (focusedPhoto !== target) {
+                            if (focusedPhoto && focusedPhoto.userData.video) focusedPhoto.userData.video.muted = true;
+                            focusedPhoto = target;
+                            if (focusedPhoto.userData.video) {
+                                focusedPhoto.userData.video.muted = false;
+                                focusedPhoto.userData.video.play().catch(e => {
+                                    console.warn("Autoplay blocked", e);
+                                    focusedPhoto.userData.video.muted = true;
+                                    focusedPhoto.userData.video.play();
+                                });
+                            }
+                        }
+                        STATE.mode = 'FOCUS';
+                    }
+                }
+                updateFeedback("PINCH: GRAB MEMORY", "purple");
+            } else if (gesture === 'FIST') {
+                STATE.isPinching = false;
+                STATE.mode = 'TREE';
+                if(focusedPhoto && focusedPhoto.userData.video) focusedPhoto.userData.video.muted = true;
+                focusedPhoto = null;
+                updateFeedback("FIST: ASSEMBLE", "blue");
+            } else if (gesture === 'OPEN') {
+                STATE.isPinching = false;
+                if (STATE.mode === 'FOCUS') {
+                    STATE.mode = 'EXPLODE';
+                    if(focusedPhoto && focusedPhoto.userData.video) focusedPhoto.userData.video.muted = true;
+                    focusedPhoto = null;
+                } else if (STATE.mode === 'TREE') {
+                    STATE.mode = 'EXPLODE';
+                }
+                updateFeedback("OPEN: CHAOS MODE", "pink");
+            }
+        };
+
+        const updateFeedback = (text, colorKey) => {
+            const colors = {
+                purple: "text-purple-200 border-purple-500/50 shadow-purple-500/30 bg-purple-900/40",
+                blue: "text-indigo-200 border-indigo-500/50 shadow-indigo-500/30 bg-indigo-900/40",
+                pink: "text-fuchsia-200 border-fuchsia-500/50 shadow-fuchsia-500/30 bg-fuchsia-900/40",
+                gray: "text-gray-400 border-gray-500/20 shadow-none bg-black/20"
+            };
+            feedbackEl.textContent = text;
+            feedbackEl.className = `glass-panel px-10 py-3 rounded-full font-serif tracking-widest text-sm transition-all duration-300 border shadow-lg ${colors[colorKey]}`;
+        };
+
+        document.getElementById('photo-upload').addEventListener('change', (e) => {
+            const files = e.target.files;
+            if(!files.length) return;
+            
+            photoMeshes.forEach(m => scene.remove(m));
+            photoMeshes = [];
+            photoGroups = [];
+            
+            Array.from(files).forEach((file, i) => {
+                const url = URL.createObjectURL(file);
+                if (file.type.startsWith('video/')) {
+                    const video = document.createElement('video');
+                    video.src = url; video.loop = true; video.muted = true; video.playsInline = true; video.crossOrigin = "anonymous";
+                    video.onloadedmetadata = () => {
+                        const texture = new THREE.VideoTexture(video); texture.colorSpace = THREE.SRGBColorSpace;
+                        createPhoto(texture, i, video); video.play();
+                    };
+                    video.load();
+                } else {
+                    loader.load(url, (texture) => {
+                        texture.colorSpace = THREE.SRGBColorSpace; 
+                        createPhoto(texture, i);
+                        URL.revokeObjectURL(url);
+                    }, undefined, (err) => {
+                        console.error('Error loading image', err);
+                    });
+                }
+            });
+        });
+
+        init();
+    </script>
+</body>
+</html>
